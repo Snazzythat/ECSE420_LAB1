@@ -11,6 +11,7 @@ typedef struct {
     unsigned char *new_image;
     pthread_mutex_t *LOCK;
     int thread_num;
+    char *output_filename;
 } thread_arg_t;
 
 // Slice the image with almost equal amounts of height to process for each thread.
@@ -44,12 +45,12 @@ void *do_image_rectification_process(void *arg)
     thread_arg_t *thread_arg = (thread_arg_t *) arg;
     int tid = thread_arg->tid;
     unsigned char *input_image = thread_arg->image;
-    unsigned char *output_image = thread_arg->new_image;
+    unsigned char *new_image = thread_arg->new_image;
     int width = thread_arg -> width;
     int height = thread_arg -> height;
     pthread_mutex_t *mutex = thread_arg -> LOCK;
     int thread_number = thread_arg -> thread_num;
-    
+    char* output_filename = thread_arg -> output_filename;
     // process image
     unsigned char value;
     
@@ -83,13 +84,14 @@ void *do_image_rectification_process(void *arg)
             }
             
             //Setting tectified values
-            output_image[4*width*i + 4*j + 0] = R; // R
-            output_image[4*width*i + 4*j + 1] = G; // G
-            output_image[4*width*i + 4*j + 2] = B; // B
-            output_image[4*width*i + 4*j + 3] = A; // A
+            new_image[4*width*i + 4*j + 0] = R; // R
+            new_image[4*width*i + 4*j + 1] = G; // G
+            new_image[4*width*i + 4*j + 2] = B; // B
+            new_image[4*width*i + 4*j + 3] = A; // A
         }
    }
     
+    lodepng_encode32_file(output_filename, new_image, width, height);
     pthread_exit(NULL);
 }
 
@@ -126,7 +128,7 @@ void rectify(char* input_filename, char* output_filename, int number_of_threads)
     // If we have 4 threads, we divide the image in 4 (width same, but height in 4)
     // If we have 8 threads, we divide the image in 8 (width same, but height in 8)
     // ETC
-    sliceHeights(heights, 13, 4);
+    sliceHeights(heights, height, number_of_threads);
     
     for(int i = 0; i< number_of_threads; i++)
     {
@@ -139,6 +141,7 @@ void rectify(char* input_filename, char* output_filename, int number_of_threads)
     
     // Now call N threads for each height to do the processing
     
+    printf("Creating struct for each thread \n\n\n");
     for (int i=0; i< number_of_threads; i++)
     {
         // Create Argument Struct for each thread and then call new thread with the struct
@@ -151,6 +154,8 @@ void rectify(char* input_filename, char* output_filename, int number_of_threads)
         thread_args[i].width = width;           // all threads will have the same width of image to process
         thread_args[i].height = *(heights + i); // give it the amount of height to process
         thread_args[i].thread_num = i;
+        thread_args[i].output_filename = output_filename;
+        printf("Struct created for thread %i \n", i);
         pthread_create(&thread_ids[i], NULL, do_image_rectification_process, (void *)&thread_args[i]);
     }
     
@@ -159,7 +164,7 @@ void rectify(char* input_filename, char* output_filename, int number_of_threads)
         pthread_join(thread_ids[i], NULL);
     }
     
-  lodepng_encode32_file(output_filename, new_image, width, height);
+  //lodepng_encode32_file(output_filename, new_image, width, height);
 
   free(image);
   free(new_image);
@@ -169,7 +174,7 @@ int main(int argc, char *argv[])
 {
     char* input_filename = "test.png";
     char* output_filename = "out.png";
-    int number_of_threads = 4;
+    int number_of_threads = 1;
     
     if(number_of_threads < 1)
     {
