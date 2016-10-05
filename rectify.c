@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <time.h>
+#include <unistd.h>
 
 typedef struct {
     int tid;
@@ -45,15 +46,14 @@ void sliceHeights(double* heights_array, int image_height, int number_of_threads
 void *do_image_rectification_process(void *arg)
 {
     thread_arg_t *thread_arg = (thread_arg_t *) arg;
-    int tid = thread_arg->tid;
     unsigned char *input_image = thread_arg->image;
     unsigned char *new_image = thread_arg->new_image;
     int width = thread_arg -> width;
     int height = thread_arg -> height;
     pthread_mutex_t *LOCK = thread_arg -> LOCK;
     int thread_number = thread_arg -> thread_num;
-    char* output_filename = thread_arg -> output_filename;
     double* heights = thread_arg -> heights;
+    char* output_filename = thread_arg -> output_filename;
     // process image
     unsigned char value;
 
@@ -106,11 +106,6 @@ void *do_image_rectification_process(void *arg)
             new_image[4*width*i + 4*j + 3] = A; // A
         }
    }
-//    pthread_mutex_lock(LOCK);
-//    printf("I'm thread: %i and inside MUTEX and writing to file! \n",thread_number);
-//    lodepng_encode32_file(output_filename, new_image, width, height);
-//    pthread_mutex_unlock(LOCK);
-//    printf("I'm thread: %i and I'm done! \n",thread_number);
     pthread_exit(NULL);
 }
 
@@ -159,7 +154,7 @@ void rectify(char* input_filename, char* output_filename, int number_of_threads)
     // divided all in almost equal space.
     
     // Now call N threads for each height to do the processing
-    
+
     for (int i=0; i< number_of_threads; i++)
     {
         // Create Argument Struct for each thread and then call new thread with the struct
@@ -177,14 +172,14 @@ void rectify(char* input_filename, char* output_filename, int number_of_threads)
         pthread_create(&thread_ids[i], NULL, do_image_rectification_process, (void *)&thread_args[i]);
     }
     
-    printf("Joining threads! \n");
-    for (int i = 0; i < number_of_threads; i++)
-    {
-        pthread_join(thread_ids[i], NULL);
-    }
-    
+//    printf("Joining threads! \n");
+//    for (int i = 0; i < number_of_threads; i++)
+//    {
+//        pthread_join(thread_ids[i], NULL);
+//    }
+    free(thread_ids);
+    free(thread_args);
     lodepng_encode32_file(output_filename, new_image, width, height);
-    
     printf("Freeing..\n");
     free(image);
     free(new_image);
@@ -193,17 +188,22 @@ void rectify(char* input_filename, char* output_filename, int number_of_threads)
 
 int main(int argc, char *argv[])
 {
-    char* input_filename = "test.png";
-    char* output_filename = "out.png";
-    int number_of_threads = 8;
+    char* input_filename = argv[1];
+    char* output_filename = argv[2];
+    int number_of_threads = atoi(argv[3]);
     
     if(number_of_threads < 1)
     {
         printf("ERROR: Can't have less than 1 thread.");
         return 1;
     }
-    
+    clock_t begin = clock();
+    printf("\n\n\n RECTIFICATION: EXECUTING WITH %i THREADS. \n\n\n",number_of_threads);
     rectify(input_filename, output_filename, number_of_threads);
+    clock_t end = clock();
+    double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
+    printf("\n\n EXECUTION ENDED, EXECUTION TIME: %f seconds using %i threads.\n\n", time_spent,number_of_threads);
+
 
     return 0;
 }
