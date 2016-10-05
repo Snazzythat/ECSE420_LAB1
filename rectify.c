@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <time.h>
 
 typedef struct {
     int tid;
@@ -12,6 +13,7 @@ typedef struct {
     pthread_mutex_t *LOCK;
     int thread_num;
     char *output_filename;
+    double *heights;
 } thread_arg_t;
 
 // Slice the image with almost equal amounts of height to process for each thread.
@@ -48,14 +50,28 @@ void *do_image_rectification_process(void *arg)
     unsigned char *new_image = thread_arg->new_image;
     int width = thread_arg -> width;
     int height = thread_arg -> height;
-    pthread_mutex_t *mutex = thread_arg -> LOCK;
+    pthread_mutex_t *LOCK = thread_arg -> LOCK;
     int thread_number = thread_arg -> thread_num;
     char* output_filename = thread_arg -> output_filename;
+    double* heights = thread_arg -> heights;
     // process image
     unsigned char value;
+
+    int endHeight =0;
+    int startHeight = 0;
     
+    for(int i = 0; i<thread_number; i++)
+    {
+        startHeight = startHeight + *(heights + i);
+    }
+    //int startHeight = thread_number * height;
+    //int endHeight = (thread_number * height) + height;
     
-   for (int i = thread_number * height; i < (thread_number * height) + height; i++) {
+    endHeight = startHeight + height;
+    
+    printf("I'm thread: %i and I work on start height %i and end height %i \n",thread_number, startHeight, endHeight);
+
+    for (int i = startHeight; i < endHeight; i++) {
         for (int j = 0; j < width; j++) {
             
             value = input_image[4*width*i + 4*j];
@@ -90,8 +106,11 @@ void *do_image_rectification_process(void *arg)
             new_image[4*width*i + 4*j + 3] = A; // A
         }
    }
-    
-    lodepng_encode32_file(output_filename, new_image, width, height);
+//    pthread_mutex_lock(LOCK);
+//    printf("I'm thread: %i and inside MUTEX and writing to file! \n",thread_number);
+//    lodepng_encode32_file(output_filename, new_image, width, height);
+//    pthread_mutex_unlock(LOCK);
+//    printf("I'm thread: %i and I'm done! \n",thread_number);
     pthread_exit(NULL);
 }
 
@@ -118,7 +137,7 @@ void rectify(char* input_filename, char* output_filename, int number_of_threads)
     new_image = malloc(width * height * 4 * sizeof(unsigned char));
     
     //Each thread will have a height to deal with.
-    double *heights = malloc(number_of_threads * sizeof(int));
+    double *heights = malloc(number_of_threads * sizeof(double));
     
     // SLICE THE IMAGE FOR HEIGHTS
     // Do processing for image height based on the # of threads.
@@ -141,7 +160,6 @@ void rectify(char* input_filename, char* output_filename, int number_of_threads)
     
     // Now call N threads for each height to do the processing
     
-    printf("Creating struct for each thread \n\n\n");
     for (int i=0; i< number_of_threads; i++)
     {
         // Create Argument Struct for each thread and then call new thread with the struct
@@ -155,26 +173,29 @@ void rectify(char* input_filename, char* output_filename, int number_of_threads)
         thread_args[i].height = *(heights + i); // give it the amount of height to process
         thread_args[i].thread_num = i;
         thread_args[i].output_filename = output_filename;
-        printf("Struct created for thread %i \n", i);
+        thread_args[i].heights = heights;
         pthread_create(&thread_ids[i], NULL, do_image_rectification_process, (void *)&thread_args[i]);
     }
     
-    // JOIN threads
-    for (int i = 0; i < number_of_threads; i++) {
+    printf("Joining threads! \n");
+    for (int i = 0; i < number_of_threads; i++)
+    {
         pthread_join(thread_ids[i], NULL);
     }
     
-  //lodepng_encode32_file(output_filename, new_image, width, height);
-
-  free(image);
-  free(new_image);
+    lodepng_encode32_file(output_filename, new_image, width, height);
+    
+    printf("Freeing..\n");
+    free(image);
+    free(new_image);
+    printf("Freed!!!!\n");
 }
 
 int main(int argc, char *argv[])
 {
     char* input_filename = "test.png";
     char* output_filename = "out.png";
-    int number_of_threads = 1;
+    int number_of_threads = 8;
     
     if(number_of_threads < 1)
     {
