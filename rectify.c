@@ -4,6 +4,9 @@
 #include <pthread.h>
 #include <time.h>
 #include <unistd.h>
+#include <stdint.h>
+#include <sys/time.h>
+
 
 typedef struct {
     int tid;
@@ -16,6 +19,7 @@ typedef struct {
     char *output_filename;
     double *heights;
 } thread_arg_t;
+
 
 // Slice the image with almost equal amounts of height to process for each thread.
 // If the hight does not actually get divided in equal chunks, distribute the remainer over
@@ -69,7 +73,7 @@ void *do_image_rectification_process(void *arg)
     
     endHeight = startHeight + height;
     
-    printf("I'm thread: %i and I work on start height %i and end height %i \n",thread_number, startHeight, endHeight);
+    printf("I'm thread: %i and I work on start height %i till end height %i \n",thread_number, startHeight, endHeight-1);
 
     for (int i = startHeight; i < endHeight; i++) {
         for (int j = 0; j < width; j++) {
@@ -144,17 +148,11 @@ void rectify(char* input_filename, char* output_filename, int number_of_threads)
     // ETC
     sliceHeights(heights, height, number_of_threads);
     
-    for(int i = 0; i< number_of_threads; i++)
-    {
-        printf("Amount of height for thread %d is %f\n",  i, *(heights + i) );
-
-    }
-    
     // At this point we will have an array of heights that each thread, depending on i will take. The heights are
     // divided all in almost equal space.
     
-    // Now call N threads for each height to do the processing
-
+    // Now build argument structs for each thread
+    printf("\n\n\n RECTIFICATION: EXECUTING WITH %i THREADS. \n\n\n",number_of_threads);
     for (int i=0; i< number_of_threads; i++)
     {
         // Create Argument Struct for each thread and then call new thread with the struct
@@ -169,18 +167,37 @@ void rectify(char* input_filename, char* output_filename, int number_of_threads)
         thread_args[i].thread_num = i;
         thread_args[i].output_filename = output_filename;
         thread_args[i].heights = heights;
+        
+    }
+    
+    //Start time at thread exec start
+    struct timeval start, end;
+    gettimeofday(&start, NULL);
+    
+    // Now call new threads with respective argument struct and the worker function (processing)
+    for (int i = 0; i < number_of_threads; i++)
+    {
         pthread_create(&thread_ids[i], NULL, do_image_rectification_process, (void *)&thread_args[i]);
     }
     
-//    printf("Joining threads! \n");
-//    for (int i = 0; i < number_of_threads; i++)
-//    {
-//        pthread_join(thread_ids[i], NULL);
-//    }
+    printf("Joining threads! Waiting.. \n");
+    for (int i = 0; i < number_of_threads; i++)
+    {
+        pthread_join(thread_ids[i], NULL);
+    }
+    
+    gettimeofday(&end, NULL);
+    printf("\n\nImage Processing took time : %ld\n", \
+           ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec)));
+    
+
+    printf("Writing to file... \n");
+    lodepng_encode32_file(output_filename, new_image, width, height);
+    printf("Writing to file...DONE \n");
+    
+    printf("Freeing Ressources..\n");
     free(thread_ids);
     free(thread_args);
-    lodepng_encode32_file(output_filename, new_image, width, height);
-    printf("Freeing..\n");
     free(image);
     free(new_image);
     printf("Freed!!!!\n");
@@ -197,13 +214,7 @@ int main(int argc, char *argv[])
         printf("ERROR: Can't have less than 1 thread.");
         return 1;
     }
-    clock_t begin = clock();
-    printf("\n\n\n RECTIFICATION: EXECUTING WITH %i THREADS. \n\n\n",number_of_threads);
     rectify(input_filename, output_filename, number_of_threads);
-    clock_t end = clock();
-    double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
-    printf("\n\n EXECUTION ENDED, EXECUTION TIME: %f seconds using %i threads.\n\n", time_spent,number_of_threads);
-
-
+    
     return 0;
 }
