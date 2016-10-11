@@ -8,6 +8,7 @@
 #include <sys/time.h>
 
 
+// Argument struct for each thread
 typedef struct {
     int tid;
     int width;
@@ -187,8 +188,10 @@ void rectify(char* input_filename, char* output_filename, int number_of_threads)
     }
     
     gettimeofday(&end, NULL);
-    printf("\n\nImage Processing took time : %ld\n", \
-           ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec)));
+    
+    long interval = ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec));
+    long converted_interval = interval/1000.0;
+    printf("\n\nImage Processing took time : %ld ms\n", converted_interval);
     
 
     printf("Writing to file... \n");
@@ -205,15 +208,24 @@ void rectify(char* input_filename, char* output_filename, int number_of_threads)
 
 int main(int argc, char *argv[])
 {
+    
+    //Usage
+    if(argc<4)
+    {
+        printf("INVALID NUMBER OF ARGUMENTS Usage: ./rectify <input PNG> <output PNG> <# of threads>\n");
+        return 0;
+    }
+    
     char* input_filename = argv[1];
     char* output_filename = argv[2];
     int number_of_threads = atoi(argv[3]);
     
     if(number_of_threads < 1)
     {
-        printf("ERROR: Can't have less than 1 thread.");
+        printf("ERROR: Can't have less than 1 thread.\n");
         return 1;
     }
+    // Call main handler
     rectify(input_filename, output_filename, number_of_threads);
     
     return 0;
