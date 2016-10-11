@@ -6,13 +6,14 @@
 #include <unistd.h>
 #include <stdint.h>
 #include <sys/time.h>
+#include "wm.h"
 
 
-// Argument struct for each thread
 typedef struct {
     int tid;
     int width;
     int height;
+    int total_image_height;
     unsigned char *image;
     unsigned char *new_image;
     pthread_mutex_t *LOCK;
@@ -22,10 +23,6 @@ typedef struct {
 } thread_arg_t;
 
 
-// Slice the image with almost equal amounts of height to process for each thread.
-// If the hight does not actually get divided in equal chunks, distribute the remainer over
-// Last threads so they do a bit more work. Ex a remainer of 3 height units will make
-// last three threads take an extra unit.
 void sliceHeights(double* heights_array, int image_height, int number_of_threads)
 {
     int remainder = image_height % number_of_threads;
@@ -43,22 +40,29 @@ void sliceHeights(double* heights_array, int image_height, int number_of_threads
         {
             *(heights_array +i) = height_for_each_thread + 1;
         }
+        
+        if (i == number_of_threads-1)
+        {
+            *(heights_array +i) = *(heights_array +i);
+        }
     }
     
 }
 
 // Actually does the rectification process by cehcking the RGB BIT values. (If lower than 127, set to 127)
-void *do_image_rectification_process(void *arg)
+void *do_image_convolution_process(void *arg)
 {
     thread_arg_t *thread_arg = (thread_arg_t *) arg;
     unsigned char *input_image = thread_arg->image;
     unsigned char *new_image = thread_arg->new_image;
     int width = thread_arg -> width;
     int height = thread_arg -> height;
+    int image_height = thread_arg -> total_image_height;
     pthread_mutex_t *LOCK = thread_arg -> LOCK;
     int thread_number = thread_arg -> thread_num;
     double* heights = thread_arg -> heights;
     char* output_filename = thread_arg -> output_filename;
+
     // process image
     unsigned char value;
 
@@ -69,48 +73,52 @@ void *do_image_rectification_process(void *arg)
     {
         startHeight = startHeight + *(heights + i);
     }
-    //int startHeight = thread_number * height;
-    //int endHeight = (thread_number * height) + height;
     
     endHeight = startHeight + height;
     
+    // take care of last height, since its a weights matrix, we need to limit our height ranging from 0 to image height - 3
+    if (image_height - endHeight < 3)
+    {
+        endHeight = image_height -3;
+    }
+    
     printf("I'm thread: %i and I work on start height %i till end height %i \n",thread_number, startHeight, endHeight-1);
-
-    for (int i = startHeight; i < endHeight; i++) {
-        for (int j = 0; j < width; j++) {
-            
-            value = input_image[4*width*i + 4*j];
-            
-            unsigned int R, G, B, A;
-            
-            R = input_image[4*width*i + 4*j + 0];
-            G = input_image[4*width*i + 4*j + 1];
-            B = input_image[4*width*i + 4*j + 2];
-            A = input_image[4*width*i + 4*j + 3];
-            
-            // now one we got the R G B value, rectify them. If a value is less than 127, then set it to 127
-            // otherwise, leave it as is.
-            
-            if(R<127)
-            {
-                R = 127;
-            }
-            if(G<127)
-            {
-                G = 127;
-            }
-            if(B<127)
-            {
-                B = 127;
-            }
-            
-            //Setting tectified values
-            new_image[4*width*i + 4*j + 0] = R; // R
-            new_image[4*width*i + 4*j + 1] = G; // G
-            new_image[4*width*i + 4*j + 2] = B; // B
-            new_image[4*width*i + 4*j + 3] = A; // A
-        }
-   }
+    
+//    for (int i = startHeight; i < endHeight; i++) {
+//        for (int j = 0; j < width; j++) {
+//            
+//            value = input_image[4*width*i + 4*j];
+//            
+//            unsigned int R, G, B, A;
+//            
+//            R = input_image[4*width*i + 4*j + 0];
+//            G = input_image[4*width*i + 4*j + 1];
+//            B = input_image[4*width*i + 4*j + 2];
+//            A = input_image[4*width*i + 4*j + 3];
+//            
+//            // now one we got the R G B value, rectify them. If a value is less than 127, then set it to 127
+//            // otherwise, leave it as is.
+//            
+//            if(R<127)
+//            {
+//                R = 127;
+//            }
+//            if(G<127)
+//            {
+//                G = 127;
+//            }
+//            if(B<127)
+//            {
+//                B = 127;
+//            }
+//            
+//            //Setting tectified values
+//            new_image[4*width*i + 4*j + 0] = R; // R
+//            new_image[4*width*i + 4*j + 1] = G; // G
+//            new_image[4*width*i + 4*j + 2] = B; // B
+//            new_image[4*width*i + 4*j + 3] = A; // A
+//        }
+//   }
     pthread_exit(NULL);
 }
 
@@ -153,7 +161,7 @@ void rectify(char* input_filename, char* output_filename, int number_of_threads)
     // divided all in almost equal space.
     
     // Now build argument structs for each thread
-    printf("\n\n\n RECTIFICATION: EXECUTING WITH %i THREADS. \n\n\n",number_of_threads);
+    printf("\n\n\n CONVOLUTION: EXECUTING WITH %i THREADS. \n\n\n",number_of_threads);
     for (int i=0; i< number_of_threads; i++)
     {
         // Create Argument Struct for each thread and then call new thread with the struct
@@ -168,6 +176,7 @@ void rectify(char* input_filename, char* output_filename, int number_of_threads)
         thread_args[i].thread_num = i;
         thread_args[i].output_filename = output_filename;
         thread_args[i].heights = heights;
+        thread_args[i].total_image_height = height;
         
     }
     
@@ -178,7 +187,7 @@ void rectify(char* input_filename, char* output_filename, int number_of_threads)
     // Now call new threads with respective argument struct and the worker function (processing)
     for (int i = 0; i < number_of_threads; i++)
     {
-        pthread_create(&thread_ids[i], NULL, do_image_rectification_process, (void *)&thread_args[i]);
+        pthread_create(&thread_ids[i], NULL, do_image_convolution_process, (void *)&thread_args[i]);
     }
     
     printf("Joining threads! Waiting.. \n");
@@ -188,10 +197,8 @@ void rectify(char* input_filename, char* output_filename, int number_of_threads)
     }
     
     gettimeofday(&end, NULL);
-    
-    long interval = ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec));
-    float converted_interval = (float)interval/1000.0;
-    printf("\n\nImage Processing took time : %.2f ms\n", converted_interval);
+    printf("\n\nImage Processing took time : %ld\n", \
+           ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec)));
     
 
     printf("Writing to file... \n");
@@ -208,24 +215,15 @@ void rectify(char* input_filename, char* output_filename, int number_of_threads)
 
 int main(int argc, char *argv[])
 {
-    
-    //Usage
-    if(argc<4)
-    {
-        printf("INVALID NUMBER OF ARGUMENTS Usage: ./rectify <input PNG> <output PNG> <# of threads>\n");
-        return 0;
-    }
-    
     char* input_filename = argv[1];
     char* output_filename = argv[2];
     int number_of_threads = atoi(argv[3]);
     
     if(number_of_threads < 1)
     {
-        printf("ERROR: Can't have less than 1 thread.\n");
+        printf("ERROR: Can't have less than 1 thread.");
         return 1;
     }
-    // Call main handler
     rectify(input_filename, output_filename, number_of_threads);
     
     return 0;

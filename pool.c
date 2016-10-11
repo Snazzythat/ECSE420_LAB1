@@ -1,4 +1,4 @@
-#include "lodepng.c"
+#include "lodepng.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
@@ -214,8 +214,10 @@ void rectify(char* input_filename, char* output_filename, int number_of_threads)
     }
     
     gettimeofday(&end, NULL);
-    printf("\n\nImage Processing took time : %ld\n", \
-           ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec)));
+    
+    long interval = ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec));
+    float converted_interval = (float)interval/1000.0;
+    printf("\n\nImage Processing took time : %.2f ms\n", converted_interval);
     
 
     printf("Writing to file... \n");
