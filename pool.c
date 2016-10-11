@@ -17,7 +17,6 @@ typedef struct {
     char *output_filename;
     double *blocks;
 	int width;
-    int height;
 } thread_arg_t;
 
 
@@ -53,7 +52,6 @@ void *do_image_pooling_process(void *arg)
     unsigned char *input_image = thread_arg->image;
     unsigned char *new_image = thread_arg->new_image;
 	int widthInitialImage = thread_arg -> width;
-    int heightInitialImage = thread_arg -> height;
     int blocksToProcess = thread_arg -> blocksToProcess;
     pthread_mutex_t *LOCK = thread_arg -> LOCK;
     int thread_number = thread_arg -> thread_num;
@@ -164,7 +162,7 @@ void rectify(char* input_filename, char* output_filename, int number_of_threads)
     if(error) printf("error %u: %s\n", error, lodepng_error_text(error));
     new_image = malloc((width/2) * (height/2) * 4 * sizeof(unsigned char));
     
-    //Each thread will have a number of block to deal with.
+    //Each thread will have a number of blocks to deal with.
     double *blocks = malloc(number_of_threads * sizeof(double));
     
     // SLICE THE IMAGE FOR BLOCKS
@@ -197,7 +195,6 @@ void rectify(char* input_filename, char* output_filename, int number_of_threads)
         thread_args[i].output_filename = output_filename;
         thread_args[i].blocks = blocks;
 		thread_args[i].width = width;
-        thread_args[i].height = height;
     }
     
     //Start time at thread exec start
