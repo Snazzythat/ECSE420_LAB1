@@ -114,7 +114,9 @@ void *do_image_rectification_process(void *arg)
     pthread_exit(NULL);
 }
 
-void rectify(char* input_filename, char* output_filename, int number_of_threads)
+//Main handler. Sets up the necessary paraemters for thread arguments struct, including the division of work for each thread
+// and issues n amount of threads. Calls lodepng necessary functions for image load/write.
+int rectify(char* input_filename, char* output_filename, int number_of_threads)
 {
     unsigned error;
     unsigned char *image, *new_image;
@@ -204,8 +206,11 @@ void rectify(char* input_filename, char* output_filename, int number_of_threads)
     free(image);
     free(new_image);
     printf("Freed!!!!\n");
+    
+    return 0;
 }
 
+//Main method
 int main(int argc, char *argv[])
 {
     
@@ -216,6 +221,7 @@ int main(int argc, char *argv[])
         return 0;
     }
     
+    int return_code = 0;
     char* input_filename = argv[1];
     char* output_filename = argv[2];
     int number_of_threads = atoi(argv[3]);
@@ -223,10 +229,17 @@ int main(int argc, char *argv[])
     if(number_of_threads < 1)
     {
         printf("ERROR: Can't have less than 1 thread.\n");
-        return 1;
+        return -1;
     }
     // Call main handler
-    rectify(input_filename, output_filename, number_of_threads);
+    return_code = rectify(input_filename, output_filename, number_of_threads);
     
-    return 0;
+    if (return_code !=0)
+    {
+        return return_code;
+    }
+    else
+    {
+        return 0;
+    }
 }

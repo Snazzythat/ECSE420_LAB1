@@ -2,229 +2,223 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
-#include <time.h>
-#include <unistd.h>
-#include <stdint.h>
-#include <sys/time.h>
 #include "wm.h"
+#include <unistd.h>
+#include <time.h>
+#include <sys/time.h>
 
-
-typedef struct {
-    int tid;
-    int width;
-    int height;
-    int total_image_height;
-    unsigned char *image;
-    unsigned char *new_image;
-    pthread_mutex_t *LOCK;
-    int thread_num;
-    char *output_filename;
-    double *heights;
+// Thread args struct
+typedef struct
+{
+    unsigned char *input_image;
+    unsigned char *output_image;
+    unsigned image_width;
+    unsigned image_height;
+    unsigned id;
+    unsigned blks;
+    unsigned blks_off;
 } thread_arg_t;
 
-
-void sliceHeights(double* heights_array, int image_height, int number_of_threads)
-{
-    int remainder = image_height % number_of_threads;
-    int height_for_each_thread = ((int)(image_height/number_of_threads));
-    
-    for(int i=0; i<number_of_threads; i++)
-    {
-        // usual insertions for heights
-        if((number_of_threads -i) > remainder)
-        {
-            *(heights_array+i) = height_for_each_thread;
-        }
-        // else the other threads ( modulo amount of threads) will ge extra one height unit from that modulo
-        else if (remainder != 0 && (number_of_threads -i) <= remainder)
-        {
-            *(heights_array +i) = height_for_each_thread + 1;
-        }
-        
-        if (i == number_of_threads-1)
-        {
-            *(heights_array +i) = *(heights_array +i);
-        }
-    }
-    
-}
-
-// Actually does the rectification process by cehcking the RGB BIT values. (If lower than 127, set to 127)
-void *do_image_convolution_process(void *arg)
+// Main worker fucntion for each thread
+void *do_convolution_process(void *arg)
 {
     thread_arg_t *thread_arg = (thread_arg_t *) arg;
-    unsigned char *input_image = thread_arg->image;
-    unsigned char *new_image = thread_arg->new_image;
-    int width = thread_arg -> width;
-    int height = thread_arg -> height;
-    int image_height = thread_arg -> total_image_height;
-    pthread_mutex_t *LOCK = thread_arg -> LOCK;
-    int thread_number = thread_arg -> thread_num;
-    double* heights = thread_arg -> heights;
-    char* output_filename = thread_arg -> output_filename;
-
-    // process image
-    unsigned char value;
-
-    int endHeight =0;
-    int startHeight = 0;
+    unsigned char *input_image = thread_arg->input_image;
+    unsigned width = thread_arg->image_width;
+    unsigned char *output_image = thread_arg->output_image;
+    int thread_blks = thread_arg->blks;
+    unsigned blocks_offset = thread_arg->blks_off;
+    signed result_conv;
+    unsigned char* col_arr;
+    unsigned RGBval;
     
-    for(int i = 0; i<thread_number; i++)
+    //get offset coord
+    int i_off = (blocks_offset)/(width - 2);
+    int j_off = (blocks_offset)%(width - 2);
+    blocks_offset = ((width)*(i_off)+(j_off));
+    //get iter. coord
+    int i = (blocks_offset)/(width);
+    int j = (blocks_offset)%(width);
+    
+    while (thread_blks > 0)
     {
-        startHeight = startHeight + *(heights + i);
+        if (j == width-2)
+        {
+            j = 0;
+            i++;
+        }
+        
+        for (int color_val = 0; color_val < 4; color_val++)
+        {
+            result_conv = 255;
+            
+            if (color_val != 3)
+            {
+                result_conv = 0;
+                
+                for (int ii = 0; ii < 3; ii++)
+                {
+                    for (int jj = 0; jj < 3; jj++)
+                    {
+                        int new_i = i + ii;
+                        int new_j = j + jj;
+                        unsigned offs = ((width)*(new_i)+(new_j));
+                        col_arr = (input_image + (offs*4));
+                        RGBval = col_arr[color_val];
+                        result_conv = result_conv + RGBval * w[ii][jj];
+                    }
+                }
+                
+                // Normalize as required
+                if (result_conv < 0)
+                {
+                    result_conv = 0;
+                }
+                else if(result_conv > 255)
+                {
+                    result_conv = 255;
+                }
+            }
+            
+            unsigned offs = ((width-2)*(i)+(j));
+            col_arr = (output_image + (offs*4));
+            col_arr[color_val] = result_conv;
+        }
+        j++;
+        thread_blks--;
     }
-    
-    endHeight = startHeight + height;
-    
-    // take care of last height, since its a weights matrix, we need to limit our height ranging from 0 to image height - 3
-    if (image_height - endHeight < 3)
-    {
-        endHeight = image_height -3;
-    }
-    
-    printf("I'm thread: %i and I work on start height %i till end height %i \n",thread_number, startHeight, endHeight-1);
-    
-//    for (int i = startHeight; i < endHeight; i++) {
-//        for (int j = 0; j < width; j++) {
-//            
-//            value = input_image[4*width*i + 4*j];
-//            
-//            unsigned int R, G, B, A;
-//            
-//            R = input_image[4*width*i + 4*j + 0];
-//            G = input_image[4*width*i + 4*j + 1];
-//            B = input_image[4*width*i + 4*j + 2];
-//            A = input_image[4*width*i + 4*j + 3];
-//            
-//            // now one we got the R G B value, rectify them. If a value is less than 127, then set it to 127
-//            // otherwise, leave it as is.
-//            
-//            if(R<127)
-//            {
-//                R = 127;
-//            }
-//            if(G<127)
-//            {
-//                G = 127;
-//            }
-//            if(B<127)
-//            {
-//                B = 127;
-//            }
-//            
-//            //Setting tectified values
-//            new_image[4*width*i + 4*j + 0] = R; // R
-//            new_image[4*width*i + 4*j + 1] = G; // G
-//            new_image[4*width*i + 4*j + 2] = B; // B
-//            new_image[4*width*i + 4*j + 3] = A; // A
-//        }
-//   }
     pthread_exit(NULL);
 }
 
-void rectify(char* input_filename, char* output_filename, int number_of_threads)
+// Area for output image (in px amount)
+unsigned calculateTotalOutputLength(original_w, original_h)
 {
-    unsigned error;
-    unsigned char *image, *new_image;
-    unsigned width, height;
+    unsigned result = 0;
+    int offset = 2; //due to convolution
+    result = (original_w - offset) * (original_h - offset);
+    return result;
+}
+
+// Get blocks # for each thread to process
+unsigned sliceBlocks(unsigned output_length, int number_of_threads)
+{
+    unsigned blocks_for_each_thread = 0;
+    blocks_for_each_thread = output_length / number_of_threads;
+    blocks_for_each_thread = (blocks_for_each_thread == 0) ? 1 : blocks_for_each_thread;
+    return blocks_for_each_thread;
+}
+
+
+// Main handler. Sets up the necessary paraemters for thread arguments struct, including the division of work for each thread
+// and issues n amount of threads. Calls lodepng necessary functions for image load/write.
+int convolve(char* input_filename, char* output_filename, int number_of_threads)
+{
+    // vars for convolution
+    unsigned char *input_image, *output_image;
+    unsigned width;
+    unsigned height;
+    unsigned output_img_len;
+    unsigned thread_blks;
     
-    //---Can have: 1, 2, 4, 8, 16, 32 p threads executing the task
-    //--Initialize mutex for threads to be able to write to file each at their own time.
-    //--Otherwise, dead lock happens.
-    pthread_mutex_t LOCK;
-    pthread_mutex_init(&LOCK, NULL);
+    pthread_t thread_ids[number_of_threads];
+    thread_arg_t thread_args[number_of_threads];
     
-    // Define size for thread IDs
-    pthread_t *thread_ids = malloc(number_of_threads * sizeof(pthread_t));
-    // Define size for thread ARGGS
-    thread_arg_t *thread_args = malloc(number_of_threads * sizeof(thread_arg_t));
+    int error1 = lodepng_decode32_file(&input_image, &width, &height, input_filename);
+    if(error1) {
+        printf("Error %u: %s\n", error1, lodepng_error_text(error1));
+        return -1;
+    }
+
+    output_img_len = calculateTotalOutputLength(width, height);
+    output_image = (unsigned char*) malloc(4 * output_img_len);
+    thread_blks = sliceBlocks(output_img_len, number_of_threads);
     
-    //Load Image first
-    error = lodepng_decode32_file(&image, &width, &height, input_filename);
-    if(error) printf("error %u: %s\n", error, lodepng_error_text(error));
-    new_image = malloc(width * height * 4 * sizeof(unsigned char));
+    unsigned extra_blks = output_img_len - (number_of_threads * thread_blks);
     
-    //Each thread will have a height to deal with.
-    double *heights = malloc(number_of_threads * sizeof(double));
-    
-    // SLICE THE IMAGE FOR HEIGHTS
-    // Do processing for image height based on the # of threads.
-    // We SLICE the image.
-    // Ex:
-    // If we have 2 threads, we divide the image in 2 (width same, but height in 2)
-    // If we have 4 threads, we divide the image in 4 (width same, but height in 4)
-    // If we have 8 threads, we divide the image in 8 (width same, but height in 8)
-    // ETC
-    sliceHeights(heights, height, number_of_threads);
-    
-    // At this point we will have an array of heights that each thread, depending on i will take. The heights are
-    // divided all in almost equal space.
-    
-    // Now build argument structs for each thread
-    printf("\n\n\n CONVOLUTION: EXECUTING WITH %i THREADS. \n\n\n",number_of_threads);
-    for (int i=0; i< number_of_threads; i++)
-    {
-        // Create Argument Struct for each thread and then call new thread with the struct
-        // First assign the mutex pointer in the args struct so that all threads will be able to access it
-        // Then assign the input and output image arrays to each thread so they will be able to retrieve their
-        // processing field in input image and write to the respective processing field of the output image.
-        thread_args[i].LOCK = &LOCK;
-        thread_args[i].image = image;
-        thread_args[i].new_image = new_image;
-        thread_args[i].width = width;           // all threads will have the same width of image to process
-        thread_args[i].height = *(heights + i); // give it the amount of height to process
-        thread_args[i].thread_num = i;
-        thread_args[i].output_filename = output_filename;
-        thread_args[i].heights = heights;
-        thread_args[i].total_image_height = height;
+    for (int i = 0; i < number_of_threads; i++) {
+        thread_args[i].input_image = input_image;
+        thread_args[i].output_image = output_image;
+        thread_args[i].image_width = width;
+        thread_args[i].image_height = height;
+        thread_args[i].id = i;
+        thread_args[i].blks = thread_blks;
+        thread_args[i].blks_off = thread_blks * i;
         
+        //due to the image not being sliced in perfect amount of blocks, assign the rest of blocks a
+        //extra work for last thread, adjust offset in others
+        if(i == number_of_threads - 1 && extra_blks > 0)
+        {
+            thread_args[i].blks += extra_blks;
+            for (int j = 0; i < number_of_threads - 1; j++)
+            {
+                thread_args[j].blks_off += extra_blks;
+            }
+        }
     }
     
     //Start time at thread exec start
     struct timeval start, end;
     gettimeofday(&start, NULL);
     
-    // Now call new threads with respective argument struct and the worker function (processing)
-    for (int i = 0; i < number_of_threads; i++)
-    {
-        pthread_create(&thread_ids[i], NULL, do_image_convolution_process, (void *)&thread_args[i]);
-    }
-    
     printf("Joining threads! Waiting.. \n");
+    for (int i = 0; i < number_of_threads && i < output_img_len; i++)
+    {
+        pthread_create(&thread_ids[i], NULL, do_convolution_process, (void *)&thread_args[i]);
+    }
+
     for (int i = 0; i < number_of_threads; i++)
     {
         pthread_join(thread_ids[i], NULL);
     }
     
+    //End time
     gettimeofday(&end, NULL);
-    printf("\n\nImage Processing took time : %ld\n", \
-           ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec)));
+    long interval = ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec));
+    float converted_interval = (float)interval/1000.0;
+    printf("\n\nImage Processing took time : %.2f ms\n", converted_interval);
     
-
     printf("Writing to file... \n");
-    lodepng_encode32_file(output_filename, new_image, width, height);
+    lodepng_encode32_file(output_filename, output_image, width - 2, height - 2);
     printf("Writing to file...DONE \n");
     
     printf("Freeing Ressources..\n");
-    free(thread_ids);
-    free(thread_args);
-    free(image);
-    free(new_image);
-    printf("Freed!!!!\n");
+    free(output_image);
+    free(input_image);
+    printf("Freeing Ressources..DONE\n");
+    return 0;
 }
 
+//Main method
 int main(int argc, char *argv[])
 {
+    
+    //Usage
+    if(argc<4)
+    {
+        printf("INVALID NUMBER OF ARGUMENTS Usage: ./convolve <input PNG> <output PNG> <# of threads>\n");
+        return -1;
+    }
+    
+    int return_code = 0;
     char* input_filename = argv[1];
     char* output_filename = argv[2];
     int number_of_threads = atoi(argv[3]);
     
     if(number_of_threads < 1)
     {
-        printf("ERROR: Can't have less than 1 thread.");
-        return 1;
+        printf("ERROR: Can't have less than 1 thread.\n");
+        return -1;
     }
-    rectify(input_filename, output_filename, number_of_threads);
     
-    return 0;
+    // Call the main handler function
+    return_code = convolve(input_filename, output_filename, number_of_threads);
+    
+    if (return_code !=0)
+    {
+        return return_code;
+    }
+    else
+    {
+        return 0;
+    }
 }

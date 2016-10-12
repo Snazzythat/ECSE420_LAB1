@@ -140,7 +140,10 @@ void *do_image_pooling_process(void *arg)
 	pthread_exit(NULL);
 }
 
-void rectify(char* input_filename, char* output_filename, int number_of_threads)
+
+//Main handler. Sets up the necessary paraemters for thread arguments struct, including the division of work for each thread
+// and issues n amount of threads. Calls lodepng necessary functions for image load/write.
+int pool(char* input_filename, char* output_filename, int number_of_threads)
 {
     unsigned error;
     unsigned char *image, *new_image;
@@ -230,20 +233,42 @@ void rectify(char* input_filename, char* output_filename, int number_of_threads)
     free(image);
     free(new_image);
     printf("Freed!!!!\n");
+    
+    return 0;
 }
 
+//Main Method
 int main(int argc, char *argv[])
 {
+    //Usage
+    if(argc<4)
+    {
+        printf("INVALID NUMBER OF ARGUMENTS Usage: ./pool <input PNG> <output PNG> <# of threads>\n");
+        return -1;
+    }
+    int return_code = 0;
+    
     char* input_filename = argv[1];
     char* output_filename = argv[2];
     int number_of_threads = atoi(argv[3]);
     
     if(number_of_threads < 1)
     {
-        printf("ERROR: Can't have less than 1 thread.");
+        printf("ERROR: Can't have less than 1 thread.\n");
         return 1;
     }
-    rectify(input_filename, output_filename, number_of_threads);
+    
+    // Calling main handler
+    return_code = pool(input_filename, output_filename, number_of_threads);
+    
+    if (return_code !=0)
+    {
+        return return_code;
+    }
+    else
+    {
+        return 0;
+    }
     
     return 0;
 }
